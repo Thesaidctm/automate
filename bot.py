@@ -146,51 +146,6 @@ def read_pairs(xlsx, sheet, col_id, col_val):
     pares.sort(key=lambda kv: codigo_sort_key(kv[0]))
     return pares
 
-# -------------------- Utilidades de valor monetário --------------------
-def parse_money_decimal(texto):
-    if texto is None:
-        return None
-
-    if isinstance(texto, Decimal):
-        try:
-            return texto.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        except Exception:
-            return None
-
-    if isinstance(texto, (int, float)):
-        texto = str(texto)
-
-    s = str(texto).strip()
-    if not s:
-        return None
-
-    s = re.sub(r"(?i)r\$", "", s)
-    s = re.sub(r"\s+", "", s)
-    s = re.sub(r"[^0-9,.-]", "", s)
-
-    if not s:
-        return None
-
-    if s.count(",") > 1:
-        s = s.replace(",", "")
-
-    if "," in s and "." in s:
-        if s.rfind(",") > s.rfind("."):
-            s = s.replace(".", "")
-            s = s.replace(",", ".")
-        else:
-            s = s.replace(",", "")
-    elif "," in s:
-        s = s.replace(".", "")
-        s = s.replace(",", ".")
-    elif s.count(".") > 1:
-        s = s.replace(".", "")
-
-    try:
-        return Decimal(s).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except Exception:
-        return None
-
 # -------------------- Navegacao/UI --------------------
 def find_first(scope, selectors, timeout_each=1800):
     for sel in selectors:
@@ -326,7 +281,7 @@ def open_edit_form(page, list_url, codigo, retries=2):
         wait_list_ready(page)
     raise RuntimeError(f"A página de edição aberta não corresponde ao item {codigo}.")
 
-def type_exact_money(input_loc, valor_str, alvo_decimal=None):
+def type_exact_money(input_loc, valor_str):
     bruto = (valor_str or "").strip()
     alvo = re.sub(r"(?i)r\$", "", bruto)
     alvo = re.sub(r"\s+", "", alvo)
@@ -334,8 +289,33 @@ def type_exact_money(input_loc, valor_str, alvo_decimal=None):
     if not alvo:
         raise ValueError("Valor vazio fornecido para preenchimento do preço.")
 
-    if alvo_decimal is None:
-        alvo_decimal = parse_money_decimal(alvo)
+    def para_decimal(texto):
+        if not texto:
+            return None
+        s = re.sub(r"(?i)r\$", "", texto)
+        s = re.sub(r"\s+", "", s)
+        s = re.sub(r"[^0-9,.-]", "", s)
+        if not s:
+            return None
+        if s.count(",") > 1:
+            s = s.replace(",", "")
+        if "," in s and "." in s:
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "")
+                s = s.replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        elif "," in s:
+            s = s.replace(".", "")
+            s = s.replace(",", ".")
+        elif s.count(".") > 1:
+            s = s.replace(".", "")
+        try:
+            return Decimal(s).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        except Exception:
+            return None
+
+    alvo_decimal = para_decimal(alvo)
     if alvo_decimal is None:
         raise ValueError(f"Valor '{valor_str}' não pôde ser interpretado como monetário.")
 
@@ -350,7 +330,7 @@ def type_exact_money(input_loc, valor_str, alvo_decimal=None):
             return ""
 
     def confere(obtido):
-        visto = parse_money_decimal(obtido)
+        visto = para_decimal(obtido)
         return visto is not None and visto == alvo_decimal
 
     tentativas = [
@@ -375,26 +355,6 @@ def type_exact_money(input_loc, valor_str, alvo_decimal=None):
     raise RuntimeError(
         f"Não foi possível definir o valor '{valor_str}' (campo ficou '{obtido or '[vazio]'}')."
     )
-
-
-def field_needs_update(input_loc, valor_str):
-    alvo_decimal = parse_money_decimal(valor_str)
-    if alvo_decimal is None:
-        raise ValueError(f"Valor '{valor_str}' não pôde ser interpretado como monetário.")
-
-    try:
-        atual = input_loc.input_value(timeout=800) or ""
-    except Exception:
-        try:
-            atual = input_loc.evaluate("el => el.value") or ""
-        except Exception:
-            atual = ""
-
-    atual_decimal = parse_money_decimal(atual)
-    if atual_decimal is not None and atual_decimal == alvo_decimal:
-        return False, alvo_decimal
-    return True, alvo_decimal
-
 
 def wait_success_feedback(page, timeout=7000):
     deadline = time.time() + (timeout / 1000)
@@ -474,18 +434,8 @@ def main():
                 campo = find_preco_licitado_input(scope)
                 if not campo:
                     raise RuntimeError("Campo 'Preço Unitário Licitado (R$)' não encontrado.")
-                precisa_editar, alvo_decimal = field_needs_update(campo, valor)
-                if not precisa_editar:
-                    msg = "Sem alteração (valor já corresponde à planilha)"
-                    try:
-                        page.goto(list_url, wait_until="domcontentloaded")
-                    except Exception:
-                        page.go_back()
-                    wait_list_ready(page)
-                    list_url = page.url
-                    continue
                 # digita exatamente o valor da planilha
-                type_exact_money(campo, valor, alvo_decimal=alvo_decimal)
+                type_exact_money(campo, valor)
                 # salva e aguarda a volta para a lista dos itens
                 save_and_return_to_list(page, list_url, edit_url)
                 list_url = page.url
