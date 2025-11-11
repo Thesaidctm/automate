@@ -168,17 +168,23 @@ def click_edit_on_row(page, codigo):
     edit.click()
 
 def find_preco_licitado_input(scope):
-    xp = "xpath=//*[contains(normalize-space(.), 'Preço Unitário Licitado')]/following::input[1]"
+    xp = (
+        "xpath="
+        "(//*[contains(normalize-space(.), 'Preço Unitário Licitado') or "
+        "contains(normalize-space(.), 'Preço unitário licitado')]/following::input)[1]"
+    )
     campo = scope.locator(xp).first
     if campo.count() > 0:
         try:
             campo.wait_for(state="visible", timeout=1500)
             return campo
-        except: pass
+        except:
+            pass
     cand = [
         "input[aria-label*='Preço' i][aria-label*='Licitado' i]",
-        "[data-testid='campo-preco-unitario'], [data-testid='campo-valor-unitario'], "
-        "input[name*='preco' i][name*='licit' i], input[name*='valor' i][name*='licit' i]"
+        "input[aria-label*='Preço Unitário Licitado' i]",
+        "[data-testid='campo-preco-unitario-licitado'], [data-testid='campo-valor-unitario-licitado']",
+        "input[name*='preco' i][name*='licitado' i]",
     ]
     return find_first(scope, cand)
 
