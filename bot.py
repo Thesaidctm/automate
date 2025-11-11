@@ -41,11 +41,23 @@ def read_pairs(xlsx, sheet, col_id, col_val):
 
     # tenta com a 2ª linha como header
     try:
-        df = pd.read_excel(xlsx, sheet_name=sheet, header=1)
+        df = pd.read_excel(
+            xlsx,
+            sheet_name=sheet,
+            header=1,
+            dtype=str,
+            keep_default_na=False,
+        )
         s_id  = pick_col(df,  [col_id, "N° Macrosserviço / Serviço", "Nº Macrosserviço / Serviço", "1"], idx_fallback=1)
         s_val = pick_col(df,  [col_val, "VALOR UNIT. COM BDI", "Preço Unitário (valor calculado).1"], idx_fallback=12)
     except Exception:
-        df = pd.read_excel(xlsx, sheet_name=sheet, header=None)
+        df = pd.read_excel(
+            xlsx,
+            sheet_name=sheet,
+            header=None,
+            dtype=str,
+            keep_default_na=False,
+        )
         df = df.iloc[1:].reset_index(drop=True)
         s_id  = df.iloc[:, 1]   # B
         s_val = df.iloc[:, 12]  # M
