@@ -201,7 +201,10 @@ def open_edit_form(page, list_url, codigo, retries=2):
     raise RuntimeError(f"A página de edição aberta não corresponde ao item {codigo}.")
 
 def type_exact_money(input_loc, valor_str):
-    alvo = (valor_str or "").strip()
+    bruto = (valor_str or "").strip()
+    alvo = re.sub(r"(?i)r\$", "", bruto)
+    alvo = re.sub(r"\s+", "", alvo)
+    alvo = re.sub(r"[^0-9,.-]", "", alvo)
     if not alvo:
         raise ValueError("Valor vazio fornecido para preenchimento do preço.")
 
