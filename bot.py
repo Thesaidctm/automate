@@ -41,11 +41,23 @@ def read_pairs(xlsx, sheet, col_id, col_val):
 
     # tenta com a 2ª linha como header
     try:
-        df = pd.read_excel(xlsx, sheet_name=sheet, header=1)
+        df = pd.read_excel(
+            xlsx,
+            sheet_name=sheet,
+            header=1,
+            dtype=str,
+            keep_default_na=False,
+        )
         s_id  = pick_col(df,  [col_id, "N° Macrosserviço / Serviço", "Nº Macrosserviço / Serviço", "1"], idx_fallback=1)
         s_val = pick_col(df,  [col_val, "VALOR UNIT. COM BDI", "Preço Unitário (valor calculado).1"], idx_fallback=12)
     except Exception:
-        df = pd.read_excel(xlsx, sheet_name=sheet, header=None)
+        df = pd.read_excel(
+            xlsx,
+            sheet_name=sheet,
+            header=None,
+            dtype=str,
+            keep_default_na=False,
+        )
         df = df.iloc[1:].reset_index(drop=True)
         s_id  = df.iloc[:, 1]   # B
         s_val = df.iloc[:, 12]  # M
@@ -111,12 +123,27 @@ def read_pairs(xlsx, sheet, col_id, col_val):
     df2["_dval"] = df2["__val"].apply(parse_val_to_decimal)
     df2 = df2[df2["_id"].notna() & df2["_dval"].notna()].drop_duplicates("_id", keep="last")
 
-    def nat_key(s):
+    def codigo_sort_key(codigo):
+        """Ordena códigos hierárquicos como "1.1", "1.10", "1.100" corretamente."""
+        if codigo is None:
+            return ()
+
+        s = str(codigo).strip()
+        if not s:
+            return ()
+
+        # Se todos os trechos separados por ponto forem numéricos, tratamos como hierarquia.
+        # Assim, "1.100" vem após "1.99" (serviço 100 do macro 1).
+        dot_parts = [p for p in s.split(".") if p != ""]
+        if dot_parts and all(part.isdigit() for part in dot_parts):
+            return tuple(int(part) for part in dot_parts)
+
+        # Fallback: ordenação natural geral (mistura de letras e números, outros separadores).
         parts = re.split(r"(\d+)", s)
-        return [int(p) if p.isdigit() else p.lower() for p in parts]
+        return tuple(int(p) if p.isdigit() else p.lower() for p in parts if p)
 
     pares = [(r["_id"], decimal_to_br(r["_dval"])) for _, r in df2.iterrows()]
-    pares.sort(key=lambda kv: nat_key(kv[0]))
+    pares.sort(key=lambda kv: codigo_sort_key(kv[0]))
     return pares
 
 # -------------------- Navegacao/UI --------------------
