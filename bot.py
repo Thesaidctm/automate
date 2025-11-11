@@ -201,21 +201,63 @@ def open_edit_form(page, list_url, codigo, retries=2):
     raise RuntimeError(f"A página de edição aberta não corresponde ao item {codigo}.")
 
 def type_exact_money(input_loc, valor_str):
-    input_loc.click()
-    input_loc.press("Control+A")
-    input_loc.press("Delete")
-    input_loc.type(valor_str)     # ex.: "87,04"
-    time.sleep(0.12)
-    try:
-        got = input_loc.input_value(timeout=800) or ""
-    except Exception:
-        got = ""
-    # se a máscara alterou, tenta mais uma vez
-    if got.strip() != valor_str.strip():
+    alvo = (valor_str or "").strip()
+    if not alvo:
+        raise ValueError("Valor vazio fornecido para preenchimento do preço.")
+
+    def limpar(texto):
+        return re.sub(r"\D", "", texto or "")
+
+    def ler_input():
+        try:
+            return input_loc.input_value(timeout=800) or ""
+        except Exception:
+            return ""
+
+    tentativas = [
+        ("fill", alvo),
+        ("type_digits", re.sub(r"\D", "", alvo) or alvo),
+    ]
+
+    for modo, texto in tentativas:
+        input_loc.click()
         input_loc.press("Control+A")
         input_loc.press("Delete")
-        input_loc.type(valor_str)
-        time.sleep(0.12)
+        if modo == "fill":
+            input_loc.fill(texto)
+        else:
+            input_loc.type(texto, delay=40)
+        time.sleep(0.15)
+        obtido = ler_input().strip()
+        if limpar(obtido) == limpar(alvo) and obtido:
+            if obtido != alvo:
+                # garante que o campo fique exatamente com o valor desejado
+                input_loc.evaluate(
+                    "(el, val) => {\n"
+                    "  el.value = val;\n"
+                    "  el.dispatchEvent(new Event('input', { bubbles: true }));\n"
+                    "  el.dispatchEvent(new Event('change', { bubbles: true }));\n"
+                    "}",
+                    alvo,
+                )
+                time.sleep(0.05)
+            return
+
+    # última tentativa forçando via JS
+    input_loc.evaluate(
+        "(el, val) => {\n"
+        "  el.value = val;\n"
+        "  el.dispatchEvent(new Event('input', { bubbles: true }));\n"
+        "  el.dispatchEvent(new Event('change', { bubbles: true }));\n"
+        "}",
+        alvo,
+    )
+    time.sleep(0.15)
+    obtido = ler_input().strip()
+    if limpar(obtido) != limpar(alvo):
+        raise RuntimeError(
+            f"Não foi possível definir o valor '{valor_str}' (campo ficou '{obtido or '[vazio]'}')."
+        )
 
 def save_and_back_to_list(page, list_url):
     # clica no botão Salvar (qualquer um visível)
