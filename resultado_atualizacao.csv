@@ -1,0 +1,2 @@
+1.1;1123,00;ERRO;Page.wait_for_selector: Timeout 15000ms exceeded. Call log:   - waiting for locator("[title*='Editar' i], [aria-label*='Editar' i], .fa-pencil, .icon-pencil") to be visible     - waiting for" https://vrpl.transferegov.sistema.gov.br/vrpl?token=e6216222-3f42-4e4e-adcb-75a69a515d80&idProposta=1973584&dest=/vrpl/licitacao-lote/detalhar-licitacao-ativa/99016/po-cff/editar-po-cff/142910/po/lis…" navigation to finish...     - navigated to "https://vrpl.transferegov.sistema.gov.br/vrpl?token=e6216222-3 (screenshot falhou)
+1.2;15,41;OK;Atualizado
