@@ -1,5 +1,6 @@
 # bot_brave_attach.py
 import re, time
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
@@ -55,28 +56,39 @@ def read_pairs(xlsx, sheet, col_id, col_val):
         if s.endswith(".0"): s = s[:-2]
         return s or None
 
-    def parse_val_to_float(x):
-        if isinstance(x, (int, float)) and pd.notna(x):
-            return float(x)
-        if pd.isna(x): return None
-        s = str(x).strip().replace("R$", "").replace(" ", "")
+    def parse_val_to_decimal(x):
+        if pd.isna(x):
+            return None
+        if isinstance(x, str):
+            s = x
+        else:
+            s = str(x)
+        s = s.strip()
+        if not s:
+            return None
+        s = s.replace("R$", "").replace(" ", "")
         s = s.replace(".", "").replace(",", ".")
-        try: return float(s)
-        except: return None
+        try:
+            dec = Decimal(s)
+        except InvalidOperation:
+            return None
+        return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-    def float_to_br(val):
+    def decimal_to_br(val):
+        if val is None:
+            return None
         return f"{val:.2f}".replace(".", ",")
 
     df2 = pd.DataFrame({"__id": s_id, "__val": s_val})
     df2["_id"]   = df2["__id"].apply(norm_id)
-    df2["_fval"] = df2["__val"].apply(parse_val_to_float)
-    df2 = df2[df2["_id"].notna() & df2["_fval"].notna()].drop_duplicates("_id", keep="last")
+    df2["_dval"] = df2["__val"].apply(parse_val_to_decimal)
+    df2 = df2[df2["_id"].notna() & df2["_dval"].notna()].drop_duplicates("_id", keep="last")
 
     def nat_key(s):
         parts = re.split(r"(\d+)", s)
         return [int(p) if p.isdigit() else p.lower() for p in parts]
 
-    pares = [(r["_id"], float_to_br(r["_fval"])) for _, r in df2.iterrows()]
+    pares = [(r["_id"], decimal_to_br(r["_dval"])) for _, r in df2.iterrows()]
     pares.sort(key=lambda kv: nat_key(kv[0]))
     return pares
 
@@ -262,19 +274,42 @@ def type_exact_money(input_loc, valor_str):
             f"Não foi possível definir o valor '{valor_str}' (campo ficou '{obtido or '[vazio]'}')."
         )
 
-def save_and_back_to_list(page, list_url):
-    # clica no botão Salvar (qualquer um visível)
+def wait_success_feedback(page, timeout=7000):
+    deadline = time.time() + (timeout / 1000)
+    for txt in SUCCESS_TEXTS:
+        restante = max(0, int((deadline - time.time()) * 1000))
+        if restante <= 0:
+            break
+        loc = page.locator(f"text={txt}")
+        try:
+            loc.wait_for(state="visible", timeout=restante)
+            return
+        except Exception:
+            continue
+
+
+def save_and_return_to_list(page, list_url, edit_url):
     salvar = find_first(page, ["button:has-text('Salvar')", "[data-testid='btn-salvar']", "button[title*='Salvar' i]"])
     if not salvar:
         raise RuntimeError("Botão 'Salvar' não encontrado.")
     salvar.click()
     page.wait_for_load_state("networkidle")
-    try:
-        page.wait_for_selector("|".join([f"text={t}" for t in SUCCESS_TEXTS]), timeout=7000)
-    except PWTimeout:
-        pass
-    # volta determinístico: força a URL da lista
-    page.goto(list_url, wait_until="domcontentloaded")
+    wait_success_feedback(page)
+
+    # aguarda a navegação natural do sistema; se não sair da página de edição,
+    # voltamos para a URL da lista como último recurso.
+    limite = time.time() + 15
+    while time.time() < limite:
+        if page.url != edit_url:
+            try:
+                wait_list_ready(page)
+                return
+            except Exception:
+                pass
+        time.sleep(0.25)
+
+    if page.url != list_url:
+        page.goto(list_url, wait_until="domcontentloaded")
     wait_list_ready(page)
 
 # -------------------- Logging --------------------
@@ -304,21 +339,23 @@ def main():
                 page = pg
         page.bring_to_front()
         page.wait_for_load_state("domcontentloaded")
-        list_url = page.url  # <- VOLTAMOS SEMPRE PARA ESTA URL
+        list_url = page.url  # URL atual da lista de itens
 
         for codigo, valor in pares:
             status, msg = "OK", "Atualizado"
             try:
                 # abre a edição do item correto
                 scope = open_edit_form(page, list_url, codigo)
+                edit_url = page.url
                 # campo "Preço Unitário Licitado (R$)"
                 campo = find_preco_licitado_input(scope)
                 if not campo:
                     raise RuntimeError("Campo 'Preço Unitário Licitado (R$)' não encontrado.")
                 # digita exatamente o valor da planilha
                 type_exact_money(campo, valor)
-                # salva e retorna para a lista correta (sempre pela mesma URL)
-                save_and_back_to_list(page, list_url)
+                # salva e aguarda a volta para a lista dos itens
+                save_and_return_to_list(page, list_url, edit_url)
+                list_url = page.url
                 time.sleep(0.12)
             except Exception as e:
                 status = "ERRO"
