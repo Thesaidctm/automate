@@ -132,10 +132,19 @@ def find_first(scope, selectors, timeout_each=1800):
     return None
 
 def wait_list_ready(page):
-    page.wait_for_load_state("domcontentloaded")
+    try:
+        page.wait_for_load_state("domcontentloaded")
+    except Exception:
+        pass
+
+    try:
+        page.wait_for_load_state("networkidle")
+    except Exception:
+        pass
+
     page.wait_for_selector(
         "[title*='Editar' i], [aria-label*='Editar' i], .fa-pencil, .icon-pencil",
-        timeout=15000
+        timeout=20000
     )
 
 def locate_row(page, codigo, max_scrolls=60):
@@ -385,6 +394,7 @@ def main():
                 page = pg
         page.bring_to_front()
         page.wait_for_load_state("domcontentloaded")
+        wait_list_ready(page)
         list_url = page.url  # URL atual da lista de itens
 
         for codigo, valor in pares:
