@@ -167,11 +167,11 @@ def click_edit_on_row(page, codigo):
         edit = page.locator("[title*='Editar' i], [aria-label*='Editar' i], .fa-pencil, .icon-pencil").first
     edit.click()
 
-def find_preco_aceito_input(scope):
+def find_preco_licitado_input(scope):
     xp = (
         "xpath="
-        "(//*[contains(normalize-space(.), 'Preço Unitário Aceito na Análise') or "
-        "contains(normalize-space(.), 'Preço unitário aceito na análise')]/following::input)[1]"
+        "(//*[contains(normalize-space(.), 'Preço Unitário Licitado') or "
+        "contains(normalize-space(.), 'Preço unitário licitado')]/following::input)[1]"
     )
     campo = scope.locator(xp).first
     if campo.count() > 0:
@@ -181,10 +181,10 @@ def find_preco_aceito_input(scope):
         except:
             pass
     cand = [
-        "input[aria-label*='Preço' i][aria-label*='Aceito' i]",
-        "input[aria-label*='Preço Unitário Aceito' i]",
-        "[data-testid='campo-preco-unitario-aceito'], [data-testid='campo-valor-unitario-aceito']",
-        "input[name*='preco' i][name*='aceito' i]",
+        "input[aria-label*='Preço' i][aria-label*='Licitado' i]",
+        "input[aria-label*='Preço Unitário Licitado' i]",
+        "[data-testid='campo-preco-unitario-licitado'], [data-testid='campo-valor-unitario-licitado']",
+        "input[name*='preco' i][name*='licitado' i]",
     ]
     return find_first(scope, cand)
 
@@ -353,10 +353,10 @@ def main():
                 # abre a edição do item correto
                 scope = open_edit_form(page, list_url, codigo)
                 edit_url = page.url
-                # campo "Preço Unitário Aceito na Análise (R$)"
-                campo = find_preco_aceito_input(scope)
+                # campo "Preço Unitário Licitado (R$)"
+                campo = find_preco_licitado_input(scope)
                 if not campo:
-                    raise RuntimeError("Campo 'Preço Unitário Aceito na Análise (R$)' não encontrado.")
+                    raise RuntimeError("Campo 'Preço Unitário Licitado (R$)' não encontrado.")
                 # digita exatamente o valor da planilha
                 type_exact_money(campo, valor)
                 # salva e aguarda a volta para a lista dos itens
