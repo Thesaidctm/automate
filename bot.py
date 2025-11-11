@@ -59,19 +59,46 @@ def read_pairs(xlsx, sheet, col_id, col_val):
     def parse_val_to_decimal(x):
         if pd.isna(x):
             return None
-        if isinstance(x, str):
-            s = x
+
+        if isinstance(x, Decimal):
+            dec = x
+        elif isinstance(x, (int, float)):
+            # trata valores numéricos preservando as casas decimais originais
+            dec = Decimal(str(x))
         else:
-            s = str(x)
-        s = s.strip()
-        if not s:
-            return None
-        s = s.replace("R$", "").replace(" ", "")
-        s = s.replace(".", "").replace(",", ".")
-        try:
-            dec = Decimal(s)
-        except InvalidOperation:
-            return None
+            s = str(x).strip()
+            if not s:
+                return None
+
+            s = (
+                s.replace("R$", "")
+                .replace("\u00a0", "")
+                .replace("\u202f", "")
+                .replace(" ", "")
+            )
+            s = re.sub(r"[^0-9,.-]", "", s)
+
+            if s.count(",") > 1:
+                s = s.replace(",", "")
+
+            if "," in s and "." in s:
+                # decide qual é o separador decimal pela última ocorrência
+                if s.rfind(",") > s.rfind("."):
+                    s = s.replace(".", "")
+                    s = s.replace(",", ".")
+                else:
+                    s = s.replace(",", "")
+            elif "," in s:
+                s = s.replace(".", "")
+                s = s.replace(",", ".")
+            elif s.count(".") > 1:
+                s = s.replace(".", "")
+
+            try:
+                dec = Decimal(s)
+            except InvalidOperation:
+                return None
+
         return dec.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
     def decimal_to_br(val):
@@ -226,8 +253,39 @@ def type_exact_money(input_loc, valor_str):
     if not alvo:
         raise ValueError("Valor vazio fornecido para preenchimento do preço.")
 
-    def limpar(texto):
-        return re.sub(r"\D", "", texto or "")
+    def para_decimal(texto):
+        if not texto:
+            return None
+        s = re.sub(r"(?i)r\$", "", texto)
+        s = re.sub(r"\s+", "", s)
+        s = re.sub(r"[^0-9,.-]", "", s)
+        if not s:
+            return None
+        if s.count(",") > 1:
+            s = s.replace(",", "")
+        if "," in s and "." in s:
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "")
+                s = s.replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        elif "," in s:
+            s = s.replace(".", "")
+            s = s.replace(",", ".")
+        elif s.count(".") > 1:
+            s = s.replace(".", "")
+        try:
+            return Decimal(s).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        except Exception:
+            return None
+
+    alvo_decimal = para_decimal(alvo)
+    if alvo_decimal is None:
+        raise ValueError(f"Valor '{valor_str}' não pôde ser interpretado como monetário.")
+
+    alvo_digitos = re.sub(r"\D", "", alvo)
+    if not alvo_digitos and alvo_decimal is not None:
+        alvo_digitos = f"{int((alvo_decimal * 100).quantize(Decimal('1')))}"
 
     def ler_input():
         try:
@@ -235,9 +293,13 @@ def type_exact_money(input_loc, valor_str):
         except Exception:
             return ""
 
+    def confere(obtido):
+        visto = para_decimal(obtido)
+        return visto is not None and visto == alvo_decimal
+
     tentativas = [
+        ("type_digits", alvo_digitos or re.sub(r"\D", "", alvo) or alvo),
         ("fill", alvo),
-        ("type_digits", re.sub(r"\D", "", alvo) or alvo),
     ]
 
     for modo, texto in tentativas:
@@ -248,37 +310,15 @@ def type_exact_money(input_loc, valor_str):
             input_loc.fill(texto)
         else:
             input_loc.type(texto, delay=40)
-        time.sleep(0.15)
+        time.sleep(0.2)
         obtido = ler_input().strip()
-        if limpar(obtido) == limpar(alvo) and obtido:
-            if obtido != alvo:
-                # garante que o campo fique exatamente com o valor desejado
-                input_loc.evaluate(
-                    "(el, val) => {\n"
-                    "  el.value = val;\n"
-                    "  el.dispatchEvent(new Event('input', { bubbles: true }));\n"
-                    "  el.dispatchEvent(new Event('change', { bubbles: true }));\n"
-                    "}",
-                    alvo,
-                )
-                time.sleep(0.05)
+        if confere(obtido):
             return
 
-    # última tentativa forçando via JS
-    input_loc.evaluate(
-        "(el, val) => {\n"
-        "  el.value = val;\n"
-        "  el.dispatchEvent(new Event('input', { bubbles: true }));\n"
-        "  el.dispatchEvent(new Event('change', { bubbles: true }));\n"
-        "}",
-        alvo,
-    )
-    time.sleep(0.15)
     obtido = ler_input().strip()
-    if limpar(obtido) != limpar(alvo):
-        raise RuntimeError(
-            f"Não foi possível definir o valor '{valor_str}' (campo ficou '{obtido or '[vazio]'}')."
-        )
+    raise RuntimeError(
+        f"Não foi possível definir o valor '{valor_str}' (campo ficou '{obtido or '[vazio]'}')."
+    )
 
 def wait_success_feedback(page, timeout=7000):
     deadline = time.time() + (timeout / 1000)
